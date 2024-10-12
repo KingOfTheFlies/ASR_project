@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DeepSpeech2(nn.Module):
-    def __init__(self, input_dim, hidden_dim, n_tokens, num_rnn_layers, bidirectional):
+    def __init__(self, input_dim, hidden_dim, n_tokens, num_rnn_layers, dropout, bidirectional):
         """
         DeepSpeech2 model with GRU and two convolutional layers.
 
@@ -44,6 +44,7 @@ class DeepSpeech2(nn.Module):
             hidden_size=hidden_dim,
             num_layers=num_rnn_layers,
             batch_first=True,
+            dropout=dropout,
             bidirectional=bidirectional
         )
 
