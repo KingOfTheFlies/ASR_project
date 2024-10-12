@@ -15,6 +15,7 @@ lr_scheduler:
   last_epoch: -1  
 loss_function:
   _target_: src.loss.CTCLossWrapper
+  zero_infinity: True
 text_encoder:
   _target_: src.text_encoder.CTCTextEncoder
 trainer:
