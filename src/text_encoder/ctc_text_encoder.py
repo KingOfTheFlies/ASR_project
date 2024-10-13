@@ -1,6 +1,7 @@
 import re
 from string import ascii_lowercase
 
+from collections import defaultdict
 import torch
 
 # TODO add CTC decode
@@ -69,6 +70,52 @@ class CTCTextEncoder:
             prev_ind = ind
 
         return self.decode(text_to_decode)
+
+    def ctc_beam_search_decode(self, probs, beam_size=10) -> str:
+        """
+        Выполняет декодирование с использованием beam search для CTC.
+
+        Args:
+            probs: numpy array формы (time_steps, num_classes)
+            beam_size: int, размер beam
+
+        Returns:
+            decoded_text (str): декодированный текст
+        """
+        EMPTY_TOK = self.EMPTY_TOK
+        ind2char = self.ind2char
+        blank_index = self.char2ind[EMPTY_TOK]
+
+        def expand_and_merge_path(dp, next_token_probs):
+            new_dp = defaultdict(float)
+            for ind, next_token_prob in enumerate(next_token_probs):
+                cur_char = ind2char[ind]
+                for (prefix, last_char), v in dp.items():
+                    if last_char == cur_char:
+                        new_prefix = prefix
+                    else:
+                        if cur_char != EMPTY_TOK:
+                            new_prefix = prefix + cur_char
+                        else:
+                            new_prefix = prefix
+                    new_dp[(new_prefix, cur_char)] += v * next_token_prob
+            return new_dp
+
+        def truncate_paths(dp, beam_size):
+            return dict(sorted(dp.items(), key=lambda x: -x[1])[:beam_size])
+
+        dp = {
+            ('', EMPTY_TOK): 1.0,
+        }
+
+        for prob in probs:
+            dp = expand_and_merge_path(dp, prob)
+            dp = truncate_paths(dp, beam_size)
+
+        # Сортируем финальные пути и выбираем лучший
+        dp = [(prefix, proba) for (prefix, _), proba in sorted(dp.items(), key=lambda x: -x[1])]
+        best_prefix = dp[0][0] if dp else ''
+        return best_prefix.strip()
 
     @staticmethod
     def normalize_text(text: str):

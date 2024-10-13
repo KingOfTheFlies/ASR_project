@@ -1,5 +1,5 @@
 defaults:
-  - model: baseline
+  - model: deepspeech2
   - metrics: example
   - datasets: example_eval # we do not want to run inference on training data
   - dataloader: example

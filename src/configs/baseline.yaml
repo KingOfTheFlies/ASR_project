@@ -30,5 +30,5 @@ trainer:
   save_period: 5 # checkpoint each save_period epochs in addition to the best epoch
   early_stop: ${trainer.n_epochs} # epochs for early stopping
   save_dir: "saved"
-  max_grad_norm: 400
-  seed: 1
+  max_grad_norm: 2
+  seed: 52
