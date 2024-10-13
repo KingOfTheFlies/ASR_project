@@ -44,6 +44,6 @@ class BeamWERMetric(BaseMetric):
         for i, length in enumerate(lengths):
             target_text = self.text_encoder.normalize_text(text[i])
             prob = probs[i][:length]
-            pred_text = self.text_encoder.ctc_beam_search_decode(prob, beam_size=self.beam_size)
+            pred_text = self.text_encoder.ctc_beam_search_decode(prob, beam_size=self.beam_size)[0]['text']
             wers.append(calc_wer(target_text, pred_text))
         return sum(wers) / len(wers)

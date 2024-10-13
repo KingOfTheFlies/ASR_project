@@ -71,51 +71,68 @@ class CTCTextEncoder:
 
         return self.decode(text_to_decode)
 
-    def ctc_beam_search_decode(self, probs, beam_size=10) -> str:
+
+    def expand_and_merge_path(self, beams, current_probs):
+        next_beams = defaultdict(float)
+        blank_token = self.EMPTY_TOK
+        vocab_size = len(self.vocab)
+
+        for prefix, last_char, score in beams:
+            for idx in range(vocab_size):
+                char = self.ind2char[idx]
+                prob = current_probs[idx]
+                new_score = score * prob
+
+                if char == blank_token:
+                    new_prefix = prefix
+                elif char == last_char:
+                    new_prefix = prefix
+                else:
+                    new_prefix = prefix + char
+
+                key = (new_prefix, char)
+                next_beams[key] += new_score
+
+        next_beams_list = [(prefix, last_char, score) for (prefix, last_char), score in next_beams.items()]
+        return next_beams_list
+        
+    def truncate_paths(self, beams, beam_size):
+        sorted_beams = sorted(beams, key=lambda x: x[2], reverse=True)
+        truncated_beams = sorted_beams[:beam_size]
+        return truncated_beams
+    
+    def ctc_beam_search_decode(self, probs, beam_size=10):
         """
-        Выполняет декодирование с использованием beam search для CTC.
+        Выполняет CTC beam search декодирование.
 
         Args:
-            probs: numpy array формы (time_steps, num_classes)
-            beam_size: int, размер beam
+            probs (torch.Tensor или np.ndarray): Массив вероятностей размерности (T, vocab_size).
+            beam_size (int): Максимальное количество beam для сохранения на каждом шаге.
 
         Returns:
-            decoded_text (str): декодированный текст
+            List[Dict[str, float]]: Список гипотез с их вероятностями.
         """
-        EMPTY_TOK = self.EMPTY_TOK
-        ind2char = self.ind2char
-        blank_index = self.char2ind[EMPTY_TOK]
+        if isinstance(probs, torch.Tensor):
+            probs = probs.cpu().numpy()
 
-        def expand_and_merge_path(dp, next_token_probs):
-            new_dp = defaultdict(float)
-            for ind, next_token_prob in enumerate(next_token_probs):
-                cur_char = ind2char[ind]
-                for (prefix, last_char), v in dp.items():
-                    if last_char == cur_char:
-                        new_prefix = prefix
-                    else:
-                        if cur_char != EMPTY_TOK:
-                            new_prefix = prefix + cur_char
-                        else:
-                            new_prefix = prefix
-                    new_dp[(new_prefix, cur_char)] += v * next_token_prob
-            return new_dp
+        time_steps, vocab_size = probs.shape
+        blank_token = self.EMPTY_TOK
 
-        def truncate_paths(dp, beam_size):
-            return dict(sorted(dp.items(), key=lambda x: -x[1])[:beam_size])
+        beams = [('', blank_token, 1.0)]
 
-        dp = {
-            ('', EMPTY_TOK): 1.0,
-        }
+        for t in range(time_steps):
+            current_probs = probs[t]
+            next_beams = self.expand_and_merge_path(beams, current_probs)
+            beams = self.truncate_paths(next_beams, beam_size)
 
-        for prob in probs:
-            dp = expand_and_merge_path(dp, prob)
-            dp = truncate_paths(dp, beam_size)
+        final_results = []
+        for prefix, _, score in beams:
+            final_results.append({'text': prefix, 'prob': score})
 
-        # Сортируем финальные пути и выбираем лучший
-        dp = [(prefix, proba) for (prefix, _), proba in sorted(dp.items(), key=lambda x: -x[1])]
-        best_prefix = dp[0][0] if dp else ''
-        return best_prefix.strip()
+        final_results.sort(key=lambda x: x['prob'], reverse=True)
+
+        return final_results
+
 
     @staticmethod
     def normalize_text(text: str):
