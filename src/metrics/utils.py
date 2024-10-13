@@ -31,7 +31,7 @@ def calc_cer(target_text, predicted_text) -> float:
     predicted_text = predicted_text.replace(" ", "")
 
     if not target_text:
-        return 1.0 if predicted_text else 0.0
+        return 1.0
 
     cer = lev_dist(target_text, predicted_text) / len(target_text)
     return cer
@@ -42,7 +42,7 @@ def calc_wer(target_text, predicted_text) -> float:
     predicted_words = predicted_text.strip().split()
 
     if not target_words:
-        return 1.0 if predicted_words else 0.0
+        return 1.0
 
     wer = lev_dist(target_words, predicted_words) / len(target_words)
     return wer
