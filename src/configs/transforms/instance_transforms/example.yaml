@@ -1,4 +1,4 @@
-train:
+train: 
   get_spectrogram: # special key for getting spectrogram
     _target_: torchaudio.transforms.MelSpectrogram
     sample_rate: 16000
@@ -11,7 +11,7 @@ train:
         p: 0.3
         sample_rate: 16000
       
-inference:
-  get_spectrogram:
-    _target_: torchaudio.transforms.MelSpectrogram
-    sample_rate: 16000
+inference: null
+  # get_spectrogram:
+  #   _target_: torchaudio.transforms.MelSpectrogram
+  #   sample_rate: 16000

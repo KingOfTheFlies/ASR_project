@@ -3,6 +3,11 @@ from string import ascii_lowercase
 
 from collections import defaultdict
 import torch
+import os
+
+import tempfile
+from tokenizers import ByteLevelBPETokenizer
+import json
 
 # TODO add CTC decode
 # TODO add BPE, LM, Beam Search support
@@ -14,21 +19,65 @@ import torch
 class CTCTextEncoder:
     EMPTY_TOK = "^"
 
-    def __init__(self, alphabet=None, **kwargs):
+    def __init__(self, use_bpe, bpe_vocab_size, train_text_path, alphabet=None, **kwargs):
         """
         Args:
             alphabet (list): alphabet for language. If None, it will be
                 set to ascii
         """
 
+        self.use_bpe = use_bpe
+        self.tokenizer = None
+
         if alphabet is None:
             alphabet = list(ascii_lowercase + " ")
 
         self.alphabet = alphabet
-        self.vocab = [self.EMPTY_TOK] + list(self.alphabet)
 
-        self.ind2char = dict(enumerate(self.vocab))
-        self.char2ind = {v: k for k, v in self.ind2char.items()}
+        if self.use_bpe:
+            model_dir = './tokenizers/bpe_tokenizer_model/'
+            vocab_file = os.path.join(model_dir, 'bpe_tokenizer-vocab.json')
+            merges_file = os.path.join(model_dir, 'bpe_tokenizer-merges.txt')
+
+            if not os.path.exists(vocab_file) or not os.path.exists(merges_file):
+                with open(train_text_path) as f:
+                    data = json.load(f)
+                    corpus_data = '\n'.join([txt['text'] for txt in data])
+
+
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as tmp_corpus_file:
+                    tmp_corpus_file.write(corpus_data)
+                    tmp_corpus_file_name = tmp_corpus_file.name
+
+                if not os.path.exists(model_dir):
+                    os.makedirs(model_dir)
+
+                tokenizer = ByteLevelBPETokenizer()
+                tokenizer.train(files=[tmp_corpus_file_name], vocab_size=bpe_vocab_size, special_tokens=[self.EMPTY_TOK])
+
+                tokenizer.save_model(model_dir, 'bpe_tokenizer')
+
+                os.remove(tmp_corpus_file_name)
+            
+            
+            self.tokenizer = ByteLevelBPETokenizer(
+                vocab_file,
+                merges_file,
+                add_prefix_space=False,
+                lowercase=True
+            )
+
+            tokenizer_vocab = self.tokenizer.get_vocab()
+            self.char2ind = {token: index + 1 for token, index in tokenizer_vocab.items()}
+            
+            self.char2ind[self.EMPTY_TOK] = 0
+            self.ind2char = {index: token for token, index in self.char2ind.items()}
+            self.vocab = [self.EMPTY_TOK] + list(tokenizer_vocab.keys())
+
+        else:
+            self.vocab = [self.EMPTY_TOK] + list(self.alphabet)
+            self.ind2char = dict(enumerate(self.vocab))
+            self.char2ind = {v: k for k, v in self.ind2char.items()}
 
     def __len__(self):
         return len(self.vocab)
@@ -39,6 +88,12 @@ class CTCTextEncoder:
 
     def encode(self, text) -> torch.Tensor:
         text = self.normalize_text(text)
+        if self.use_bpe and self.tokenizer is not None:
+            encoded = self.tokenizer.encode(text)
+            token_ids = encoded.ids
+            token_ids = [tid + 1 for tid in token_ids]
+            return torch.tensor(token_ids).unsqueeze(0)
+
         try:
             return torch.Tensor([self.char2ind[char] for char in text]).unsqueeze(0)
         except KeyError:
@@ -57,6 +112,11 @@ class CTCTextEncoder:
         Returns:
             raw_text (str): raw text with empty tokens and repetitions.
         """
+        if self.use_bpe and self.tokenizer is not None:
+            token_ids = [int(ind) - 1 for ind in inds if int(ind) != 0]
+            tokens = [self.tokenizer.id_to_token(tid) for tid in token_ids]
+            text = self.tokenizer.decoder.decode(tokens)
+            return text
         return "".join([self.ind2char[int(ind)] for ind in inds]).strip()
 
     def ctc_decode(self, inds) -> str:
@@ -72,66 +132,39 @@ class CTCTextEncoder:
         return self.decode(text_to_decode)
 
 
-    def expand_and_merge_path(self, beams, current_probs):
-        next_beams = defaultdict(float)
-        blank_token = self.EMPTY_TOK
-        vocab_size = len(self.vocab)
-
-        for prefix, last_char, score in beams:
-            for idx in range(vocab_size):
-                char = self.ind2char[idx]
-                prob = current_probs[idx]
-                new_score = score * prob
-
-                if char == blank_token:
-                    new_prefix = prefix
-                elif char == last_char:
+    def expand_end_merge_path(self, beams, next_token_probs):
+        new_dp = defaultdict(float)
+        for ind, next_token_prob in enumerate(next_token_probs):
+            cur_char = self.ind2char[ind]
+            for (prefix, last_char), v in beams.items():
+                if last_char == cur_char:
                     new_prefix = prefix
                 else:
-                    new_prefix = prefix + char
-
-                key = (new_prefix, char)
-                next_beams[key] += new_score
-
-        next_beams_list = [(prefix, last_char, score) for (prefix, last_char), score in next_beams.items()]
-        return next_beams_list
+                    if cur_char != self.EMPTY_TOK:
+                        new_prefix = prefix + cur_char
+                    else:
+                        new_prefix = prefix
+                new_dp[(new_prefix, cur_char)] += v * next_token_prob
+        return new_dp
         
-    def truncate_paths(self, beams, beam_size):
-        sorted_beams = sorted(beams, key=lambda x: x[2], reverse=True)
-        truncated_beams = sorted_beams[:beam_size]
-        return truncated_beams
+    def truncate_paths(beams, beam_size):
+        return dict(sorted(list(beams.items()), key=lambda x: -x[1])[:beam_size])
     
-    def ctc_beam_search_decode(self, probs, beam_size=10):
-        """
-        Выполняет CTC beam search декодирование.
-
-        Args:
-            probs (torch.Tensor или np.ndarray): Массив вероятностей размерности (T, vocab_size).
-            beam_size (int): Максимальное количество beam для сохранения на каждом шаге.
-
-        Returns:
-            List[Dict[str, float]]: Список гипотез с их вероятностями.
-        """
+    def ctc_beam_search_decode(self, probs, beam_size):
         if isinstance(probs, torch.Tensor):
             probs = probs.cpu().numpy()
 
-        time_steps, vocab_size = probs.shape
-        blank_token = self.EMPTY_TOK
+        beams = { ("", self.EMPTY_TOK): 1. }
 
-        beams = [('', blank_token, 1.0)]
+        for prob in probs:
+            beams = self.expand_end_merge_path(beams, prob)
+            beams = self.truncate_paths(beams, beam_size)
 
-        for t in range(time_steps):
-            current_probs = probs[t]
-            next_beams = self.expand_and_merge_path(beams, current_probs)
-            beams = self.truncate_paths(next_beams, beam_size)
-
-        final_results = []
-        for prefix, _, score in beams:
-            final_results.append({'text': prefix, 'prob': score})
-
-        final_results.sort(key=lambda x: x['prob'], reverse=True)
-
-        return final_results
+        beams = [
+            {"text": prefix, "prob": proba.item()}  \
+            for (prefix, _), proba in sorted(beams.items(), key=lambda x: -x[1])
+        ]
+        return beams
 
 
     @staticmethod

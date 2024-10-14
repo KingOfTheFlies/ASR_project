@@ -104,7 +104,8 @@ class DeepSpeech2(nn.Module):
 
         output = {
             "log_probs": log_probs,
-            "log_probs_length": spectrogram_length
+            "log_probs_length": spectrogram_length,
+            "probs": F.softmax(x, dim=-1),
         }
 
         return output

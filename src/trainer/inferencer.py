@@ -136,15 +136,19 @@ class Inferencer(BaseTrainer):
         # Some saving logic. This is an example
         # Use if you need to save predictions on disk
 
-        batch_size = batch["logits"].shape[0]
+        batch_size = batch["probs"].shape[0]
         current_id = batch_idx * batch_size
 
         for i in range(batch_size):
             # clone because of
             # https://github.com/pytorch/pytorch/issues/1995
-            logits = batch["logits"][i].clone()
-            label = batch["labels"][i].clone()
+            logits = batch["probs"][i].clone()
+            length = batch["log_probs_length"][i].clone()
+            label = batch["text"][i].clone()
+            audio_path = batch["audio_path"][i]
             pred_label = logits.argmax(dim=-1)
+
+            # TODO: pred_text = self.text_encoder.ctc_decode(probs[:length])[0]["text"]
 
             output_id = current_id + i
 
