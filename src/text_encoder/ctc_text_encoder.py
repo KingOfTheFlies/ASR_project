@@ -19,7 +19,7 @@ import json
 class CTCTextEncoder:
     EMPTY_TOK = "^"
 
-    def __init__(self, use_bpe, bpe_vocab_size, train_text_path, alphabet=None, **kwargs):
+    def __init__(self, use_bpe, bpe_vocab_size, tokenizer_model_dir, train_text_path, alphabet=None, **kwargs):
         """
         Args:
             alphabet (list): alphabet for language. If None, it will be
@@ -35,9 +35,8 @@ class CTCTextEncoder:
         self.alphabet = alphabet
 
         if self.use_bpe:
-            model_dir = './tokenizers/bpe_tokenizer_model/'
-            vocab_file = os.path.join(model_dir, 'bpe_tokenizer-vocab.json')
-            merges_file = os.path.join(model_dir, 'bpe_tokenizer-merges.txt')
+            vocab_file = os.path.join(tokenizer_model_dir, 'bpe_tokenizer-vocab.json')
+            merges_file = os.path.join(tokenizer_model_dir, 'bpe_tokenizer-merges.txt')
 
             if not os.path.exists(vocab_file) or not os.path.exists(merges_file):
                 with open(train_text_path) as f:
@@ -49,13 +48,13 @@ class CTCTextEncoder:
                     tmp_corpus_file.write(corpus_data)
                     tmp_corpus_file_name = tmp_corpus_file.name
 
-                if not os.path.exists(model_dir):
-                    os.makedirs(model_dir)
+                if not os.path.exists(tokenizer_model_dir):
+                    os.makedirs(tokenizer_model_dir)
 
                 tokenizer = ByteLevelBPETokenizer()
                 tokenizer.train(files=[tmp_corpus_file_name], vocab_size=bpe_vocab_size, special_tokens=[self.EMPTY_TOK])
 
-                tokenizer.save_model(model_dir, 'bpe_tokenizer')
+                tokenizer.save_model(tokenizer_model_dir, 'bpe_tokenizer')
 
                 os.remove(tmp_corpus_file_name)
             

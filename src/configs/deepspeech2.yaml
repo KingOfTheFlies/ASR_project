@@ -20,6 +20,7 @@ text_encoder:
   _target_: src.text_encoder.CTCTextEncoder
   use_bpe: True
   bpe_vocab_size: 1000
+  tokenizer_model_dir: './tokenizers/bpe_tokenizer_model/'
   train_text_path: "./data/datasets/librispeech/train-clean-100_index.json"   # path to json corpus
 trainer:
   log_step: 20
