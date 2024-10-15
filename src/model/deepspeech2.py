@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DeepSpeech2(nn.Module):
-    def __init__(self, input_dim, hidden_dim, n_tokens, num_rnn_layers, dropout, bidirectional):
+    def __init__(self, input_dim, use_conv, hidden_dim, n_tokens, num_rnn_layers, dropout, bidirectional):
         """
         DeepSpeech2 model with GRU and two convolutional layers.
 
@@ -15,29 +15,32 @@ class DeepSpeech2(nn.Module):
             bidirectional (bool): If True, RNN will be bidirectional.
         """
         super(DeepSpeech2, self).__init__()
+        self.conv = None
+        self.gru_input_size = input_dim
+        if use_conv:
+             
+            self.conv = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=1,
+                    out_channels=32,
+                    kernel_size=(11, 41),
+                    stride=(2, 2),
+                    padding=(5, 20)
+                ),
+                nn.BatchNorm2d(32),
+                nn.Hardtanh(0, 20, inplace=True),
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=32,
+                    kernel_size=(11, 21),
+                    stride=(1, 2),
+                    padding=(5, 10)
+                ),
+                nn.BatchNorm2d(32),
+                nn.Hardtanh(0, 20, inplace=True)
+            )
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(
-                in_channels=1,
-                out_channels=32,
-                kernel_size=(11, 41),
-                stride=(2, 2),
-                padding=(5, 20)
-            ),
-            nn.BatchNorm2d(32),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(
-                in_channels=32,
-                out_channels=32,
-                kernel_size=(11, 21),
-                stride=(1, 2),
-                padding=(5, 10)
-            ),
-            nn.BatchNorm2d(32),
-            nn.Hardtanh(0, 20, inplace=True)
-        )
-
-        self.gru_input_size = self._calc_rnn_inp_dim(input_dim)
+            self.gru_input_size = self._calc_rnn_inp_dim(input_dim)
 
         self.gru = nn.GRU(
             input_size=self.gru_input_size,
@@ -81,14 +84,15 @@ class DeepSpeech2(nn.Module):
         batch_size = spectrogram.size(0)
         x = spectrogram.unsqueeze(1)        # (B, 1, freq, time)
 
-        x = self.conv(x)  # (B, C, freq, time)
+        if self.conv is not None:
+            x = self.conv(x)  # (B, C, freq, time)
 
-        spectrogram_length = self._conv_output_size(
-            spectrogram_length, kernel_size=41, stride=2, padding=20
-        )
-        spectrogram_length = self._conv_output_size(
-            spectrogram_length, kernel_size=21, stride=2, padding=10
-        )
+            spectrogram_length = self._conv_output_size(
+                spectrogram_length, kernel_size=41, stride=2, padding=20
+            )
+            spectrogram_length = self._conv_output_size(
+                spectrogram_length, kernel_size=21, stride=2, padding=10
+            )
 
         # print("========a_conv_x_shape", x.shape)
         x = x.permute(0, 3, 1, 2)                           # (B, time, C, freq)

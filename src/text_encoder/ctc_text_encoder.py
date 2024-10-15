@@ -57,26 +57,45 @@ class CTCTextEncoder:
                 tokenizer.save_model(tokenizer_model_dir, 'bpe_tokenizer')
 
                 os.remove(tmp_corpus_file_name)
-            
-            
+
             self.tokenizer = ByteLevelBPETokenizer(
                 vocab_file,
                 merges_file,
-                add_prefix_space=False,
                 lowercase=True
             )
 
-            tokenizer_vocab = self.tokenizer.get_vocab()
-            self.char2ind = {token: index + 1 for token, index in tokenizer_vocab.items()}
-            
-            self.char2ind[self.EMPTY_TOK] = 0
-            self.ind2char = {index: token for token, index in self.char2ind.items()}
-            self.vocab = [self.EMPTY_TOK] + list(tokenizer_vocab.keys())
+            self.vocab = self.tokenizer.get_vocab()
 
         else:
             self.vocab = [self.EMPTY_TOK] + list(self.alphabet)
             self.ind2char = dict(enumerate(self.vocab))
             self.char2ind = {v: k for k, v in self.ind2char.items()}
+
+    def ind2token(self, ind):
+        if self.use_bpe:
+            return self.tokenizer.id_to_token(ind) 
+        else:
+            return self.ind2char[ind]
+            
+    def token2ind(self, token):
+        if self.use_bpe:
+            return self.tokenizer.token_to_id(token)
+        else:
+            return self.char2ind[token]
+            
+
+    def text2ind(self, text):
+        if self.use_bpe:
+            return torch.Tensor(self.tokenizer.encode(text).ids)
+        else:
+            return torch.Tensor([self.token2ind(token) for token in text]).unsqueeze(0)
+            
+
+    def ind2text(self, inds):
+        if self.use_bpe:
+            return self.tokenizer.decode(inds)
+        else:            
+            return "".join([self.ind2token(int(ind)) for ind in inds]).strip()
 
     def __len__(self):
         return len(self.vocab)
@@ -87,14 +106,8 @@ class CTCTextEncoder:
 
     def encode(self, text) -> torch.Tensor:
         text = self.normalize_text(text)
-        if self.use_bpe and self.tokenizer is not None:
-            encoded = self.tokenizer.encode(text)
-            token_ids = encoded.ids
-            token_ids = [tid + 1 for tid in token_ids]
-            return torch.tensor(token_ids).unsqueeze(0)
-
         try:
-            return torch.Tensor([self.char2ind[char] for char in text]).unsqueeze(0)
+            return torch.Tensor([self.text2ind(char) for char in text]).unsqueeze(0)
         except KeyError:
             unknown_chars = set([char for char in text if char not in self.char2ind])
             raise Exception(
@@ -111,17 +124,12 @@ class CTCTextEncoder:
         Returns:
             raw_text (str): raw text with empty tokens and repetitions.
         """
-        if self.use_bpe and self.tokenizer is not None:
-            token_ids = [int(ind) - 1 for ind in inds if int(ind) != 0]
-            tokens = [self.tokenizer.id_to_token(tid) for tid in token_ids]
-            text = self.tokenizer.decoder.decode(tokens)
-            return text
-        return "".join([self.ind2char[int(ind)] for ind in inds]).strip()
+        return self.ind2text(inds)
 
     def ctc_decode(self, inds) -> str:
         text_to_decode = []
         prev_ind = None
-        blank_index = self.char2ind[self.EMPTY_TOK]
+        blank_index = self.token2ind(self.EMPTY_TOK)
 
         for ind in inds:
             if ind != prev_ind and ind != blank_index:
@@ -134,7 +142,7 @@ class CTCTextEncoder:
     def expand_end_merge_path(self, beams, next_token_probs):
         new_dp = defaultdict(float)
         for ind, next_token_prob in enumerate(next_token_probs):
-            cur_char = self.ind2char[ind]
+            cur_char = self.ind2token(ind)
             for (prefix, last_char), v in beams.items():
                 if last_char == cur_char:
                     new_prefix = prefix
@@ -146,7 +154,7 @@ class CTCTextEncoder:
                 new_dp[(new_prefix, cur_char)] += v * next_token_prob
         return new_dp
         
-    def truncate_paths(beams, beam_size):
+    def truncate_paths(self, beams, beam_size):
         return dict(sorted(list(beams.items()), key=lambda x: -x[1])[:beam_size])
     
     def ctc_beam_search_decode(self, probs, beam_size):

@@ -1,18 +1,18 @@
 defaults:
   - model: deepspeech2
   - writer: wandb
-  - metrics: example
+  - metrics: trian_metrics
   - datasets: example
   - dataloader: example
   - transforms: example_only_instance
   - _self_
 optimizer:
   _target_: torch.optim.AdamW
-  lr: 3e-4
+  lr: 2e-4
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 0.84
-  last_epoch: -1  
+  gamma: 0.9
+  last_epoch: -1 
 loss_function:
   _target_: src.loss.CTCLossWrapper
   zero_infinity: True
@@ -23,7 +23,7 @@ text_encoder:
   tokenizer_model_dir: './tokenizers/bpe_tokenizer_model/'
   train_text_path: "./data/datasets/librispeech/train-clean-100_index.json"   # path to json corpus
 trainer:
-  log_step: 20
+  log_step: 10
   n_epochs: 100
   # epoch_len: 200
   device_tensors: ["spectrogram", "text_encoded"] # which tensors should be on device (ex. GPU)

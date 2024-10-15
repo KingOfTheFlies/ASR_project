@@ -38,7 +38,7 @@ class BeamCERMetric(BaseMetric):
         self, log_probs: torch.Tensor, log_probs_length: torch.Tensor, text: List[str], **kwargs
     ):
         cers = []
-        probs = log_probs.cpu().detach().numpy()
+        probs = torch.exp(log_probs).cpu().detach().numpy()
         lengths = log_probs_length.detach().cpu().numpy()
 
         for i, length in enumerate(lengths):

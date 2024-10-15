@@ -1,5 +1,6 @@
 black
 comet_ml
+datasets
 editdistance
 hydra-core
 isort
@@ -8,6 +9,7 @@ numpy==1.26.4
 pandas
 pre-commit
 soundfile
+tokenizers 
 torch_audiomentations
 torch==2.2.0
 torchaudio==2.2.0
