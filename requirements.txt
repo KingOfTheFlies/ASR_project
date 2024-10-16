@@ -2,6 +2,7 @@ black
 comet_ml
 datasets
 editdistance
+gdown
 hydra-core
 isort
 matplotlib
