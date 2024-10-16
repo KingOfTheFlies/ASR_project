@@ -32,7 +32,6 @@ class BeamCERMetric(BaseMetric):
     def __init__(self, text_encoder, beam_size, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.text_encoder = text_encoder
-        self.beam_size = beam_size
 
     def __call__(
         self, log_probs: torch.Tensor, log_probs_length: torch.Tensor, text: List[str], **kwargs
@@ -44,6 +43,6 @@ class BeamCERMetric(BaseMetric):
         for i, length in enumerate(lengths):
             target_text = self.text_encoder.normalize_text(text[i])
             prob = probs[i][:length]
-            pred_text = self.text_encoder.ctc_beam_search_decode(prob, beam_size=self.beam_size)[0]['text']
+            pred_text = self.text_encoder.ctc_beam_search_decode(prob)[0]['text']
             cers.append(calc_cer(target_text, pred_text))
         return sum(cers) / len(cers)

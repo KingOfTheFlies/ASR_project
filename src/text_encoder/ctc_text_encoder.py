@@ -19,7 +19,8 @@ import json
 class CTCTextEncoder:
     EMPTY_TOK = "^"
 
-    def __init__(self, use_bpe, bpe_vocab_size, tokenizer_model_dir, train_text_path, alphabet=None, **kwargs):
+    def __init__(self, use_bpe, bpe_vocab_size, beam_size, 
+                 tokenizer_model_dir, train_text_path, alphabet=None, **kwargs):
         """
         Args:
             alphabet (list): alphabet for language. If None, it will be
@@ -28,6 +29,7 @@ class CTCTextEncoder:
 
         self.use_bpe = use_bpe
         self.tokenizer = None
+        self.beam_size = beam_size
 
         if alphabet is None:
             alphabet = list(ascii_lowercase + " ")
@@ -138,41 +140,53 @@ class CTCTextEncoder:
 
         return self.decode(text_to_decode)
 
-
-    def expand_end_merge_path(self, beams, next_token_probs):
-        new_dp = defaultdict(float)
-        for ind, next_token_prob in enumerate(next_token_probs):
-            cur_char = self.ind2token(ind)
-            for (prefix, last_char), v in beams.items():
-                if last_char == cur_char:
-                    new_prefix = prefix
-                else:
-                    if cur_char != self.EMPTY_TOK:
-                        new_prefix = prefix + cur_char
-                    else:
-                        new_prefix = prefix
-                new_dp[(new_prefix, cur_char)] += v * next_token_prob
-        return new_dp
-        
-    def truncate_paths(self, beams, beam_size):
-        return dict(sorted(list(beams.items()), key=lambda x: -x[1])[:beam_size])
-    
-    def ctc_beam_search_decode(self, probs, beam_size):
+    def ctc_beam_search_decode(self, probs):
         if isinstance(probs, torch.Tensor):
             probs = probs.cpu().numpy()
 
-        beams = { ("", self.EMPTY_TOK): 1. }
+        time_steps, vocab_size = probs.shape
+        blank_token = self.EMPTY_TOK
 
-        for prob in probs:
-            beams = self.expand_end_merge_path(beams, prob)
-            beams = self.truncate_paths(beams, beam_size)
+        beams = [('', blank_token, 1.0)]
 
-        beams = [
-            {"text": prefix, "prob": proba.item()}  \
-            for (prefix, _), proba in sorted(beams.items(), key=lambda x: -x[1])
-        ]
-        return beams
+        for t in range(time_steps):
+            current_probs = probs[t]
+            next_beams = self.expand_and_merge_path(beams, current_probs)
+            beams = self.truncate_paths(next_beams, self.beam_size)
+        final_results = []
+        for prefix, _, score in beams:
+            final_results.append({'text': prefix, 'prob': score})
+        final_results.sort(key=lambda x: x['prob'], reverse=True)
+        return final_results
 
+    def expand_and_merge_path(self, beams, current_probs):
+        next_beams = defaultdict(float)
+        blank_token = self.EMPTY_TOK
+        vocab_size = len(self.vocab)
+
+        for prefix, last_char, score in beams:
+            for idx in range(vocab_size):
+                char = self.ind2token(idx)
+                prob = current_probs[idx]
+                new_score = score * prob
+
+                if char == blank_token:
+                    new_prefix = prefix
+                elif char == last_char:
+                    new_prefix = prefix
+                else:
+                    new_prefix = prefix + char
+
+                key = (new_prefix, char)
+                next_beams[key] += new_score
+
+        next_beams_list = [(prefix, last_char, score) for (prefix, last_char), score in next_beams.items()]
+        return next_beams_list
+
+    def truncate_paths(self, beams, beam_size):
+        sorted_beams = sorted(beams, key=lambda x: x[2], reverse=True)
+        truncated_beams = sorted_beams[:beam_size]
+        return truncated_beams
 
     @staticmethod
     def normalize_text(text: str):

@@ -8,7 +8,7 @@ defaults:
   - _self_
 optimizer:
   _target_: torch.optim.AdamW
-  lr: 2e-4
+  lr: 1e-3
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
   gamma: 0.9
@@ -19,7 +19,7 @@ loss_function:
 text_encoder:
   _target_: src.text_encoder.CTCTextEncoder
   use_bpe: True
-  bpe_vocab_size: 1000
+  bpe_vocab_size: 1024
   tokenizer_model_dir: './tokenizers/bpe_tokenizer_model/'
   train_text_path: "./data/datasets/librispeech/train-clean-100_index.json"   # path to json corpus
 trainer:
@@ -35,4 +35,4 @@ trainer:
   early_stop: ${trainer.n_epochs} # epochs for early stopping
   save_dir: "saved"
   max_grad_norm: 10
-  seed: 1
+  seed: 52

@@ -1,12 +1,12 @@
 defaults:
   - model: deepspeech2
-  - metrics: example
+  - metrics: inference_metrics
   - datasets: inference_data # we do not want to run inference on training data
   - dataloader: example
   - transforms: example
   - _self_
 inferencer:
-  device_tensors: ["data_object", "labels"] # which tensors should be on device (ex. GPU)
+  device_tensors: ["spectrogram", "text_encoded"] # which tensors should be on device (ex. GPU)
   device: auto # device name or "auto"
   save_path: "inference_results" # any name here, can be a dataset name
   seed: 1
@@ -14,5 +14,7 @@ inferencer:
 text_encoder:
   _target_: src.text_encoder.CTCTextEncoder
   use_bpe: True
-  bpe_vocab_size: 1000
+  bpe_vocab_size: 1024
+  beam_size: 1
   train_text_path: "./data/datasets/librispeech/train-clean-100_index.json"
+  tokenizer_model_dir: './tokenizers/bpe_tokenizer_model/'

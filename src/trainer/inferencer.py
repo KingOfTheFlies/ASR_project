@@ -4,6 +4,8 @@ from tqdm.auto import tqdm
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 
+from src.utils.io_utils import write_json
+
 
 class Inferencer(BaseTrainer):
     """
@@ -142,24 +144,29 @@ class Inferencer(BaseTrainer):
         for i in range(batch_size):
             # clone because of
             # https://github.com/pytorch/pytorch/issues/1995
-            logits = batch["probs"][i].clone()
+            probs = batch["probs"][i].clone()
             length = batch["log_probs_length"][i].clone()
-            label = batch["text"][i].clone()
+            label = batch["text"][i]
             audio_path = batch["audio_path"][i]
-            pred_label = logits.argmax(dim=-1)
+            pred_label = probs.argmax(dim=-1)
 
-            # TODO: pred_text = self.text_encoder.ctc_decode(probs[:length])[0]["text"]
+            beam_size=self.config.text_encoder.get("beam_size")
+
+            if beam_size == 1:
+                pred_text = self.text_encoder.ctc_decode(pred_label[:length])
+            else:
+                pred_text = self.text_encoder.ctc_beam_search_decode(probs[:length])[0]["text"]
 
             output_id = current_id + i
 
             output = {
-                "pred_label": pred_label,
-                "label": label,
+                "predicted_text": pred_text,
+                "target_text": label,
             }
 
             if self.save_path is not None:
                 # you can use safetensors or other lib here
-                torch.save(output, self.save_path / part / f"output_{output_id}.pth")
+                write_json(output, self.save_path / f"output_{output_id}.json")
 
         return batch
 
