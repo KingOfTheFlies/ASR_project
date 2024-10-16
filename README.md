@@ -27,7 +27,7 @@ conda activate ASR_project
 pip install -r requirements.txt
 ```
 
-2. Download model checkpoint, vocab and language model.
+2. Download model checkpoint.
 ```bash
 gdown --folder https://drive.google.com/drive/folders/1j32oNiZH4ffMdb_rVbiQRzKTiE9HUYH5?usp=sharing
 ```
