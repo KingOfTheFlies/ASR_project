@@ -35,12 +35,12 @@ gdown --folder https://drive.google.com/drive/folders/1j32oNiZH4ffMdb_rVbiQRzKTi
 ## Inference
 ```bash
 python inference.py inferencer.from_pretrained="./checkpoints/bpe_rnn_only_models_big/model_best.pth" \
-text_encoder.use_bpe=True \
-datasets.inference.audio_dir=<dir with audios> \
-datasets.inference.transcription_dir=<dir with transcriptions> \
-inferencer.device=<device> \
-inferencer.save_path=<name of folder for predicted texts> \
-text_encoder.beam_size=<beam size>
+          text_encoder.use_bpe=True \
+          datasets.inference.audio_dir=<dir with audios> \
+          datasets.inference.transcription_dir=<dir with transcriptions> \
+          inferencer.device=<device> \
+          inferencer.save_path=<name of folder for predicted texts> \
+          text_encoder.beam_size=<beam size>
 ```
 
 ## Train
